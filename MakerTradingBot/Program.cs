@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,10 +11,10 @@ namespace MakerTradingBot
 {
     public class Program
     {
-        static string openware_api_url = "https://www.example.com/api/v2/peatio";
-        static string openware_ranger_url = "wss://www.example.com/api/v2/ranger";
-        static string ApiKey = "XXXXXXXXXXXXXXXX";
-        static string ApiKeySecret = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
+        static string openware_api_url = "https://www.quantaexchange.org/api/v2/peatio";
+        static string openware_ranger_url = "wss://www.quantaexchange.org/api/v2/ranger";
+        static string ApiKey = "9d833da4f5651cc4";
+        static string ApiKeySecret = "f9b5a592b79cc73e712d99179b246128";
 
         static OpenwareClient client;
 
@@ -40,7 +41,7 @@ namespace MakerTradingBot
             int ticks = 0;
 
             client = new OpenwareClient(openware_api_url, openware_ranger_url, ApiKey, ApiKeySecret);
-            
+
             //client.CancelAllOrders();
             client.PrintMarkets();
             client.PrintBalances();
@@ -51,17 +52,28 @@ namespace MakerTradingBot
                 {
                     client.PrintOrders();
 
-                    client.CancelOrders();
-
-                    client.IssueNewProposal();
+                    client.ExecuteMakerBot();
+                    client.ExecuteTakerBot();
 
                     client.PrintOrders();
                 }
 
-                
-                client.PrintBalances();
+
+                //client.PrintBalances();
+
+                var task = Task.Run(async () => await client.GetAccountBalances());
+                string balancesJSON = task.Result;
+                if (!string.IsNullOrEmpty(balancesJSON))
+                {
+                    List<Balance> balances = JsonConvert.DeserializeObject<List<Balance>>(balancesJSON);
+                    foreach (var balance in balances)
+                    {
+                        File.AppendAllText("wallets-" + balance.currency + ".csv", balance.currency + "," + balance.balance + "," + balance.locked + "\n");
+                    }
+                }
 
                 System.Threading.Thread.Sleep(1000);
+                //System.Threading.Thread.Sleep(100);
 
                 ticks++;
 

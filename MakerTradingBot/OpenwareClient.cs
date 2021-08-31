@@ -156,13 +156,13 @@ namespace MakerTradingBot
         public string apiKey;
         public string apiKeySecret;
 
-        public string TradingPair = "wikieth";
+        public string TradingPair = "wikieth"; // wikieth
         string userAgent = "openware/c#";
 
         List<Order> NewOrders = new List<Order>();
         List<Order> openOrders = new List<Order>();
-        
-        System.Random rand = new Random();
+
+        RNG rand = new RNG();
 
         public OpenwareClient(string openwareApiUrl, string openwareRangerUrl, string apiKey, string apiSecret)
         {
@@ -176,7 +176,7 @@ namespace MakerTradingBot
         {
             string url = openwareApiUrl + "/public/timestamp";
 
-            string res = await GetAsync(url);
+            string res = Get(url);
 
             return res;
         }
@@ -185,7 +185,7 @@ namespace MakerTradingBot
         {
             string url = openwareApiUrl + "/account/balances";
 
-            string res = await GetAsync(url);
+            string res = Get(url);
 
             return res;
         }
@@ -194,7 +194,7 @@ namespace MakerTradingBot
         {
             string url = openwareApiUrl + "/public/markets";
 
-            string res = await GetAsync(url);
+            string res = Get(url);
 
             return res;
         }
@@ -203,7 +203,7 @@ namespace MakerTradingBot
         {
             string url = openwareApiUrl + "/market/orders";
 
-            string orders = await GetAsync(url);
+            string orders = Get(url);
 
             var openOrders = JsonConvert.DeserializeObject<List<Order>>(orders);
 
@@ -212,9 +212,9 @@ namespace MakerTradingBot
 
         public async Task<MarketDepth> GetSnapshot()
         {
-            string url = openwareApiUrl + "/public/markets/" + TradingPair +"/depth";
+            string url = openwareApiUrl + "/public/markets/" + TradingPair + "/depth";
 
-            string marketDepthJSON = await GetAsync(url);
+            string marketDepthJSON = Get(url);
 
             MarketDepth marketDepth = JsonConvert.DeserializeObject<MarketDepth>(marketDepthJSON);
 
@@ -225,7 +225,7 @@ namespace MakerTradingBot
         {
             string url = openwareApiUrl + "/public/markets/tickers";
 
-            string tickerJSON = await GetAsync(url);
+            string tickerJSON = Get(url);
 
             var dict = JsonConvert.DeserializeObject<Dictionary<string, object>>(tickerJSON);
 
@@ -252,11 +252,11 @@ namespace MakerTradingBot
 
             string resp = Post(url, data, "application/json", "POST");
 
-            if(!string.IsNullOrEmpty(resp))
+            if (!string.IsNullOrEmpty(resp))
             {
                 Order order = JsonConvert.DeserializeObject<Order>(resp);
 
-                Console.WriteLine("Order Executed " + order.Market + " " + order.Id + " " + order.Uuid + " " + order.State + " price: " + string.Format("{0:0.0000}", order.Price) + " volume: " + string.Format("{0:0.00000}", order.OriginVolume));
+                Console.WriteLine("Order Executed [" + orderType.ToString() + "] " + order.Market + " " + order.Id + " " + order.Uuid + " " + order.State + " price: " + string.Format("{0:0.0000}", order.Price) + " volume: " + string.Format("{0:0.00000}", order.OriginVolume));
 
                 return order;
             }
@@ -276,17 +276,11 @@ namespace MakerTradingBot
             {
                 Order order = JsonConvert.DeserializeObject<Order>(resp);
 
-                if(NewOrders != null)
+                if (NewOrders != null)
                 {
-                    try
-                    {
-                        NewOrders.Remove(NewOrders.First(o => o.Id == id));
-                    }
-                    catch(Exception ex)
-                    { 
-                    }
+                    NewOrders.Remove(NewOrders.First(o => o.Id == id));
                 }
-                
+
 
                 Console.WriteLine("Order Canceled " + order.Market + " " + order.Id + " " + order.Uuid + " " + order.State + " price: " + order.Price + " volume: " + order.OriginVolume);
             }
@@ -296,14 +290,6 @@ namespace MakerTradingBot
             }
         }
 
-        float RandomFloat(float min, float max)
-        {
-            float random = (float)rand.NextDouble();
-            float diff = max - min;
-            float r = random * diff;
-            return min + r;
-        }
-        
         public void CancelAllOrders()
         {
             var task = Task.Run(async () => await GetOrders());
@@ -318,7 +304,7 @@ namespace MakerTradingBot
 
         public void CancelOrders()
         {
-            for(int i=0;i< NewOrders.Count;i++)
+            for (int i = 0; i < NewOrders.Count; i++)
             {
                 Order order = NewOrders[i];
 
@@ -329,6 +315,141 @@ namespace MakerTradingBot
                     CancelOrder(order.Id);
                 }
             }
+        }
+
+        public float stepSize = 0.01f;
+        public float stepMode = 0.00f;
+        public double ConvertToRadians(double angle)
+        {
+            return (Math.PI / 180) * angle;
+        }
+
+        public void ExecuteTakerBot()
+        {
+            Console.WriteLine("Taker Bot.");
+            float minVolume = 0.0001f;
+            float MAX_Volume = 1.0f;
+            float MAX_SELL_Volume = 1.0f;
+            int numTakerBots = 4;
+            float amplitude = 100;
+
+            if(stepMode >= 360)
+            {
+                stepMode = 0;
+
+                stepSize = rand.Next(0.01f, 10.00f);
+            }
+
+            for (int k = 0; k < numTakerBots; k++)
+            {
+                var task = Task.Run(async () => await GetSnapshot());
+                MarketDepth marketDepth = task.Result;
+
+                var task2 = Task.Run(async () => await GetTickers());
+                Ticker ticker = task2.Result;
+
+                float lastPrice = float.Parse(ticker.Last);
+
+                if (rand.Next(0, 5) >= 2)
+                {
+                    // BUY
+                    if (marketDepth.Asks.Any())
+                    {
+                        // Get minimum buying price and max volume.
+                        float minBuyPrice = float.MaxValue;
+                        float maxVolume = minVolume;
+                        bool found = false;
+
+                        for (int i = 0; i < marketDepth.Asks.Count; i++)
+                        {
+                            var ask = marketDepth.Asks[i];
+
+                            if (ask.First() < minBuyPrice && ask.First() >= lastPrice)
+                            {
+                                minBuyPrice = ask.First();
+                                maxVolume = ask[1];
+                                found = true;
+                            }
+                        }
+
+                        float volume = rand.Next(minVolume, amplitude * (float)Math.Sin(ConvertToRadians(stepMode * (maxVolume % MAX_Volume))));
+                        //float volume = rand.Next(minVolume, maxVolume % MAX_Volume);
+                        float price = minBuyPrice;
+
+                        if(price >= lastPrice && found)
+                        {
+                            try
+                            {
+                                Order or = ExecuteOrder(OrderType.Buy, volume, price);
+
+                                stepMode += stepSize;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine("ERROR couldn't execute BUY order. Price:" + price + " volume: " + volume);
+                            }
+                        }
+                    }
+                    else
+                    {
+
+                    }
+                }
+                else
+                {
+                    // SELL
+                    if (marketDepth.Bids.Any())
+                    {
+                        // Get maximum selling price and max volume.
+                        float maxSellPrice = float.MinValue;
+                        float maxVolume = minVolume;
+                        bool found = false;
+                        for (int i = 0; i < marketDepth.Bids.Count; i++)
+                        {
+                            var bid = marketDepth.Bids[i];
+
+                            if (bid.First() > maxSellPrice && bid.First() <= lastPrice)
+                            {
+                                maxSellPrice = bid.First();
+                                maxVolume = bid[1];
+                                found = true;
+                            }
+                        }
+
+                        float volume = rand.Next(minVolume, amplitude * (float)Math.Sin(ConvertToRadians(stepMode * (maxVolume % MAX_SELL_Volume))));
+                        //float volume = rand.Next(minVolume, maxVolume % MAX_SELL_Volume);
+                        float price = maxSellPrice;
+
+                        if (price <= lastPrice && found)
+                        {
+                            try
+                            {
+                                Order or = ExecuteOrder(OrderType.Sell, volume, price);
+
+                                stepMode += stepSize;
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine("ERROR couldn't execute SELL order. Price:" + price + " volume: " + volume);
+                            }
+                        }
+                    }
+                    else
+                    {
+
+                    }
+                }
+            }
+
+        }
+
+
+        public void ExecuteMakerBot()
+        {
+            Console.WriteLine("Maker Bot.");
+            CancelOrders();
+
+            IssueNewProposal();
         }
 
         public void IssueNewProposal()
@@ -348,66 +469,62 @@ namespace MakerTradingBot
 
             float lastPrice = float.Parse(ticker.Last);
 
-            if (marketDepth.Asks.Any())
+            if (marketDepth.Asks.Any() && marketDepth.Bids.Count() < numOrders)
             {
                 float minPriceSell = marketDepth.Asks.Min(ask => ask.First());
 
-                //float minPriceBuy = marketDepth.Bids.Min(bid => bid.First());
 
                 for (int i = 0; i < numOrders; i++)
                 {
-                    float volume = RandomFloat(minVolume, maxVolume);
-                    //float price = RandomFloat(minPriceSell - offset - (numOrders * bidSpread), minPriceSell - offset);
-                    float price = RandomFloat(((minPriceSell - offset) - (numOrders * bidSpread)), (minPriceSell - offset));
+                    float volume = rand.Next(minVolume, maxVolume);
+                    //float price = rand.Next(minPriceSell - offset - (numOrders * bidSpread), minPriceSell - offset);
+                    float price = rand.Next(((minPriceSell - offset) - (numOrders * bidSpread)), (minPriceSell - offset));
 
                     try
                     {
                         Order or = ExecuteOrder(OrderType.Buy, volume, price);
 
-                        if(or != null)
+                        if (or != null)
                         {
                             NewOrders.Add(or);
                         }
-                        
+
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         Console.WriteLine("ERROR couldn't execute BUY order. Price:" + price + " volume: " + volume);
                     }
                 }
             }
-            else
+            else if (!marketDepth.Bids.Any())
             {
-                //for (int i = 0; i < numOrders; i++)
-                //{
-                //    float volume = RandomFloat(minVolume, maxVolume);
-                //    float price = RandomFloat(((lastPrice - offset) - (numOrders * bidSpread)), (lastPrice - offset));
+                float volume = rand.Next(minVolume, maxVolume);
+                float price = rand.Next(((lastPrice - offset) - (numOrders * bidSpread)), (lastPrice - offset));
 
-                //    try
-                //    {
-                //        Order or = ExecuteOrder(OrderType.Buy, volume, price);
+                try
+                {
+                    Order or = ExecuteOrder(OrderType.Buy, volume, price);
 
-                //        if (or != null)
-                //        {
-                //            NewOrders.Add(or);
-                //        }
-                //    }
-                //    catch (Exception ex)
-                //    {
-                //        Console.WriteLine("ERROR couldn't execute BUY order. Price:" + price + " volume: " + volume);
-                //    }
-                //}
+                    if (or != null)
+                    {
+                        NewOrders.Add(or);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("ERROR couldn't execute BUY order. Price:" + price + " volume: " + volume);
+                }
 
             }
 
-            if (marketDepth.Bids.Any())
+            if (marketDepth.Bids.Any() && marketDepth.Asks.Count() < numOrders)
             {
                 float maxPriceBuy = marketDepth.Bids.Max(bid => bid.First());
 
                 for (int i = 0; i < numOrders; i++)
                 {
-                    float volume = RandomFloat(minVolume, maxVolume);
-                    float price = RandomFloat(maxPriceBuy + offset, maxPriceBuy + offset + (numOrders * askSpread));
+                    float volume = rand.Next(minVolume, maxVolume);
+                    float price = rand.Next(maxPriceBuy + offset, maxPriceBuy + offset + (numOrders * askSpread));
 
                     try
                     {
@@ -424,27 +541,24 @@ namespace MakerTradingBot
                     }
                 }
             }
-            else
+            else if (!marketDepth.Asks.Any())
             {
-                //for (int i = 0; i < numOrders; i++)
-                //{
-                //    float volume = RandomFloat(minVolume, maxVolume);
-                //    float price = RandomFloat(lastPrice + offset, lastPrice + offset + (numOrders * askSpread));
+                float volume = rand.Next(minVolume, maxVolume);
+                float price = rand.Next(lastPrice + offset, lastPrice + offset + (numOrders * askSpread));
 
-                //    try
-                //    {
-                //        Order or = ExecuteOrder(OrderType.Sell, volume, price);
+                try
+                {
+                    Order or = ExecuteOrder(OrderType.Sell, volume, price);
 
-                //        if (or != null)
-                //        {
-                //            NewOrders.Add(or);
-                //        }
-                //    }
-                //    catch (Exception ex)
-                //    {
-                //        Console.WriteLine("ERROR couldn't execute SELL order. Price:" + price + " volume: " + volume);
-                //    }
-                //}
+                    if (or != null)
+                    {
+                        NewOrders.Add(or);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("ERROR couldn't execute SELL order. Price:" + price + " volume: " + volume);
+                }
             }
         }
 
@@ -455,28 +569,30 @@ namespace MakerTradingBot
             openOrders = task.Result;
 
             Console.WriteLine("Orders:");
-
-            foreach (var order in openOrders)
+            if (openOrders != null)
             {
-                if(order.Market == TradingPair && order.OrdType == "limit")
+                foreach (var order in openOrders)
                 {
-                    if (order.State == "pending")
+                    if (order.Market == TradingPair && order.OrdType == "limit")
                     {
-                        Console.WriteLine("\t" + order.Market + " " + order.Id
-                            + " " + order.Side + " price: " + order.Price
-                            + " volume: " + order.OriginVolume
-                            + " " + order.State + " " + order.OrdType + " TradesCount: " + order.TradesCount);
-                    }
-                    else if (order.State == "wait")
-                    {
-                        Console.WriteLine("\t" + order.Market + " " + order.Id
-                            + " " + order.Side + " price: " + order.Price
-                            + " volume: " + order.OriginVolume
-                            + " " + order.State + " " + order.OrdType + " TradesCount: " + order.TradesCount);
-                    }
-                    else if (order.State == "cancel")
-                    {
+                        if (order.State == "pending")
+                        {
+                            Console.WriteLine("\t" + order.Market + " " + order.Id
+                                + " " + order.Side + " price: " + order.Price
+                                + " volume: " + order.OriginVolume
+                                + " " + order.State + " " + order.OrdType + " TradesCount: " + order.TradesCount);
+                        }
+                        else if (order.State == "wait")
+                        {
+                            Console.WriteLine("\t" + order.Market + " " + order.Id
+                                + " " + order.Side + " price: " + order.Price
+                                + " volume: " + order.OriginVolume
+                                + " " + order.State + " " + order.OrdType + " TradesCount: " + order.TradesCount);
+                        }
+                        else if (order.State == "cancel")
+                        {
 
+                        }
                     }
                 }
             }
@@ -492,8 +608,8 @@ namespace MakerTradingBot
             List<Market> deserializedMarkets = JsonConvert.DeserializeObject<List<Market>>(markets);
             foreach (var market in deserializedMarkets)
             {
-                Console.WriteLine("\t" + market.Name + " MinPrice: " 
-                    + market.MinPrice + " MaxPrice: " + market.MaxPrice + " MinAmount: " + market.MinAmount 
+                Console.WriteLine("\t" + market.Name + " MinPrice: "
+                    + market.MinPrice + " MaxPrice: " + market.MaxPrice + " MinAmount: " + market.MinAmount
                     + " PricePrecision: " + market.PricePrecision + " AmountPrecision: " + market.AmountPrecision);
             }
         }
@@ -504,12 +620,20 @@ namespace MakerTradingBot
 
             string balances = task.Result;
 
-            Console.WriteLine("Assets:");
-            List<Balance> deserializedBalances = JsonConvert.DeserializeObject<List<Balance>>(balances);
-            foreach (var balance in deserializedBalances)
+            if (string.IsNullOrEmpty(balances))
             {
-                Console.WriteLine("\t"+balance.currency + " balance: " + balance.balance + " locked: " + balance.locked);
+                Console.WriteLine("Could not retrieve asset balances. Server returned malformed json.");
             }
+            else
+            {
+                Console.WriteLine("Assets:");
+                List<Balance> deserializedBalances = JsonConvert.DeserializeObject<List<Balance>>(balances);
+                foreach (var balance in deserializedBalances)
+                {
+                    Console.WriteLine("\t" + balance.currency + " balance: " + balance.balance + " locked: " + balance.locked);
+                }
+            }
+
         }
 
         long GetTimestamp()
@@ -546,14 +670,14 @@ namespace MakerTradingBot
             return hashResult;
         }
 
-        
-        public async Task<string> GetAsync(string uri)
+
+        public string Get(string uri)
         {
             string timestamp = GetTimestamp().ToString();
             string signature = GenerateSignature(timestamp);
 
             HttpWebRequest request = (HttpWebRequest)WebRequest.Create(uri);
-            request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+            //request.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
             request.Accept = "application/json";
             request.UserAgent = userAgent;
             request.Headers["X-Auth-Apikey"] = apiKey;
@@ -562,11 +686,11 @@ namespace MakerTradingBot
 
             try
             {
-                using (HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync())
+                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
                 using (Stream stream = response.GetResponseStream())
                 using (StreamReader reader = new StreamReader(stream))
                 {
-                    return await reader.ReadToEndAsync();
+                    return reader.ReadToEnd();
                 }
             }
             catch (Exception ex)
