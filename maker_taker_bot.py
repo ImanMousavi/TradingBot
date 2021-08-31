@@ -16,10 +16,10 @@ import pytz
 
 from datetime import datetime
 
-openware_api_url = "https://www.quantaexchange.org/api/v2/peatio"
-openware_ranger_url = "wss://www.quantaexchange.org/api/v2/ranger"
-ApiKey = "9d833da4f5651cc4"
-ApiKeySecret = "f9b5a592b79cc73e712d99179b246128"
+openware_api_url = "https://www.example.com/api/v2/peatio"
+openware_ranger_url = "wss://www.example.com/api/v2/ranger"
+ApiKey = "xxxxxxxxxxxxxxxxxxxxxx"
+ApiKeySecret = "xxxxxxxxxxxxxxxxxxxxxx"
 TradingPair = "wikieth"
 #TradingPair = "ethusd"
 
