@@ -11,10 +11,10 @@ namespace MakerTradingBot
 {
     public class Program
     {
-        static string openware_api_url = "https://www.quantaexchange.org/api/v2/peatio";
-        static string openware_ranger_url = "wss://www.quantaexchange.org/api/v2/ranger";
-        static string ApiKey = "9d833da4f5651cc4";
-        static string ApiKeySecret = "f9b5a592b79cc73e712d99179b246128";
+        static string openware_api_url = "https://www.example.com/api/v2/peatio";
+        static string openware_ranger_url = "wss://www.example.com/api/v2/ranger";
+        static string ApiKey = "xxxxxxxxxxxxxxxxxxxxxx";
+        static string ApiKeySecret = "xxxxxxxxxxxxxxxxxxxxxx";
 
         static OpenwareClient client;
 
